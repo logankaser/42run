@@ -26,7 +26,12 @@ class Window:
         self.width = width
         self.height = height
         glfw.set_window_size_callback(
-            self.glfw_window, self._window_resize_handler)
+            self.glfw_window, self._window_resize_handler
+        )
+        self.keys = {}
+        glfw.set_key_callback(
+            self.glfw_window, self._keypress_handler
+        )
         glfw.make_context_current(self.glfw_window)
 
         icon = Image.open("assets/icon.png")
@@ -38,6 +43,16 @@ class Window:
 
     def _window_resize_handler(self, win, width, height):
         self.width, self.height = width, height
+
+    def _keypress_handler(self, win, key, scancode, action, mods):
+        if action == glfw.PRESS or action == glfw.REPEAT:
+            self.keys[key] = True
+        else:
+            self.keys[key] = False
+
+    def key(self, k):
+        """Query keypress."""
+        return self.keys.get(k, False)
 
     def close(self):
         """Close the window."""

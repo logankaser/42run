@@ -5,7 +5,7 @@ import ctypes
 import numpy as np
 from pyrr import matrix44
 from collections import deque
-from window import Window
+from window import Window, glfw
 from entity import Entity
 from render_context import RenderContext
 from math import pi
@@ -15,11 +15,34 @@ from OpenGL.GL import *
 
 
 class Player(Entity):
-    """Class represent the player."""
+    """Player."""
 
     def __init__(self):
         """Create a player."""
         super().__init__("42", [0, 0, 0], [0, 0, 0])
+        self.velocity = np.array([0, 0, 0], dtype=np.float32)
+
+    def update(self, win):
+        """Update."""
+        if win.key(glfw.KEY_SPACE):
+            self.velocity[1] += 0.1
+        elif self.pos[1] <= 0.0:
+            self.velocity[1] = 0.0
+        else:
+            self.velocity[1] -= 0.1
+        self.pos[1] += self.velocity[1]
+
+
+class Obstacle(Entity):
+    """Obstacle."""
+
+    def __init__(self, pos):
+        """Create a player."""
+        super().__init__("monkey", pos, [0, 0, 0])
+
+    def update(self, win):
+        """Update."""
+        self.pos[2] -= 0.1
 
 
 def render(ctx):
@@ -37,13 +60,10 @@ def render(ctx):
         exit("GLERROR: ", gluErrorString(err))
 
 
-def update(entities, ctx):
+def update(entities, ctx, win):
     """Game update loop."""
     for e in entities:
-        if e.model == "monkey":
-            e.pos[2] -= 0.1
-            if e.pos[2] <= 0:
-                e.pos[2] = 60
+        e.update(win)
         e.draw(ctx)
 
 
@@ -62,15 +82,15 @@ def main():
     ctx.load_models(["monkey", "42"])
 
     entities = [
-        Entity("monkey", [0, 0, 40], [0, 0, 0]),
-        Entity("monkey", [0, 0, 20], [0, 0, 0]),
-        Entity("monkey", [0, 0, 60], [0, 0, 0]),
+        Obstacle([0, 0, 40]),
+        Obstacle([0, 0, 20]),
+        Obstacle([0, 0, 60]),
         Player()
     ]
     # mainloop
 
     while window:
-        update(entities, ctx)
+        update(entities, ctx, window)
         render(ctx)
         window.swap_buffers()
     window.close()
