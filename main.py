@@ -7,7 +7,7 @@ from pyrr import matrix44
 from collections import deque
 from window import Window, glfw
 from entity import Entity
-from render_context import RenderContext
+from context import Context
 from math import pi
 import OpenGL
 OpenGL.ERROR_CHECKING = False
@@ -22,14 +22,15 @@ class Player(Entity):
         super().__init__("42", [0, 0, 0], [0, 0, 0])
         self.velocity = np.array([0, 0, 0], dtype=np.float32)
 
-    def update(self, win):
+    def update(self, ctx, win):
         """Update."""
-        if win.key(glfw.KEY_SPACE):
-            self.velocity[1] += 0.1
+        # Jump, meat to be "floatyish"
+        if win.key(glfw.KEY_SPACE) and self.pos[1] <= 0.0 and self.velocity[1] <= 0.02:
+            self.velocity[1] += 0.5
         elif self.pos[1] <= 0.0:
             self.velocity[1] = 0.0
-        else:
-            self.velocity[1] -= 0.1
+        elif self.velocity[1] >= -0.15:
+            self.velocity[1] -= 0.02
         self.pos[1] += self.velocity[1]
 
 
@@ -38,11 +39,15 @@ class Obstacle(Entity):
 
     def __init__(self, pos):
         """Create a player."""
-        super().__init__("monkey", pos, [0, 0, 0])
+        super().__init__("monkey", pos, [0, 0, -pi])
 
-    def update(self, win):
+    def update(self, ctx, win):
         """Update."""
+        for c in self.collisions:
+            exit("YOU DIED")
         self.pos[2] -= 0.1
+        if self.pos[2] < -1:
+            self.pos[2] += 60
 
 
 def render(ctx):
@@ -60,10 +65,19 @@ def render(ctx):
         exit("GLERROR: ", gluErrorString(err))
 
 
-def update(entities, ctx, win):
+def update(player, entities, ctx, win):
     """Game update loop."""
+    player_radius = ctx.models[player.model]["radius"]
+    if player.pos[1] < 0.5:
+        for e in entities:
+            e.collisions.clear()
+            if e.pos[2] - ctx.models[e.model]["radius"] <= player.pos[2] + player_radius and e.pos[2] + ctx.models[e.model]["radius"] >= player.pos[2] - player_radius:
+                e.collisions.append(player)
+
+    player.update(ctx, win)
+    player.draw(ctx)
     for e in entities:
-        e.update(win)
+        e.update(ctx, win)
         e.draw(ctx)
 
 
@@ -77,7 +91,7 @@ def main():
         np.array([0, 1, 0])  # up vector
     )
     P = matrix44.create_perspective_projection(60, 1, 0.1, 100)
-    ctx = RenderContext(V, 60, window)
+    ctx = Context(V, 60, window)
     ctx.load_shaders("assets/42run.frag", "assets/42run.vert")
     ctx.load_models(["monkey", "42"])
 
@@ -85,12 +99,12 @@ def main():
         Obstacle([0, 0, 40]),
         Obstacle([0, 0, 20]),
         Obstacle([0, 0, 60]),
-        Player()
     ]
+    player = Player()
     # mainloop
 
     while window:
-        update(entities, ctx, window)
+        update(player, entities, ctx, window)
         render(ctx)
         window.swap_buffers()
     window.close()

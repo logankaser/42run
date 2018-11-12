@@ -10,6 +10,7 @@ class Entity:
     def __init__(self, model, position, rotation):
         """Create entity."""
         self.model = model
+        self.collisions = []
         self.pos = np.array(position, dtype=np.float32)
         self.rot = np.array(rotation, dtype=np.float32)
         self.transform = None

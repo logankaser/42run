@@ -13,8 +13,20 @@ from OpenGL.GL import shaders
 from OpenGL.raw.GL.EXT.texture_filter_anisotropic import *
 
 
-class RenderContext:
-    """OpenGL ."""
+def get_radius(vertices):
+    """Get bounding column."""
+    lengths = vertices[5::8]**2 + vertices[6::8]**2
+
+    # find the maximum value
+    maximum = lengths.max()
+
+    # square root this, this is the radius
+    radius = np.sqrt(maximum)
+    return radius
+
+
+class Context:
+    """Context."""
 
     def __init__(self, V, fov, win):
         """Create render context."""
@@ -99,12 +111,14 @@ class RenderContext:
                 if (mat.texture and not self.textures.get(mat.texture.path)):
                     self.load_texture(mat.texture.path)
                 texture = self.textures.get(mat.texture.path)
-                all_vertices.append(np.array(mat.vertices, dtype=np.float32))
+                verts = np.array(mat.vertices, dtype=np.float32)
+                all_vertices.append(verts)
                 model_indices += len(mat.vertices) // 8
             models[model_name] = {
                 "offset": model_offset,
                 "indices": model_indices,
-                "texture": texture
+                "texture": texture,
+                "radius": get_radius(verts)
             }
             model_offset += model_indices
 
