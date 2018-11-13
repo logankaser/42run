@@ -2,8 +2,8 @@
 
 import ctypes
 import numpy as np
+from os import path
 from PIL import Image
-from pyrr import matrix44
 from pywavefront import Wavefront
 from collections import deque
 import OpenGL
@@ -28,14 +28,9 @@ def get_radius(vertices):
 class Context:
     """Context."""
 
-    def __init__(self, V, fov, win):
+    def __init__(self):
         """Create render context."""
-        self.window = win
-        self.V = V
-        self.fov = fov
-        self.P = matrix44.create_perspective_projection(
-            fov, win.width / win.height, 0.1, 100)
-        self.program_id = None
+        self.program_ids = {}
         self.uniforms = {}
         self.draw_queue = deque()
         self.models = {}
@@ -47,18 +42,16 @@ class Context:
         glEnable(GL_DEPTH_TEST)
         glDepthFunc(GL_LESS)
 
-    def refresh(self):
+    def clear(self):
         """Clear buffer."""
-        self.P = matrix44.create_perspective_projection(
-            self.fov, self.window.width / self.window.height, 0.1, 100)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-    def load_shaders(self, frag, vert):
+    def load_program(self, name):
         """Load shaders."""
         try:
-            with open(frag, "r") as src:
+            with open(path.join("assets", name + ".frag"), "r") as src:
                 frag_src = src.read()
-            with open(vert, "r") as src:
+            with open(path.join("assets", name + ".vert"), "r") as src:
                 vert_src = src.read()
         except Exception as e:
             exit("Error reading shader from disk")
@@ -70,32 +63,31 @@ class Context:
         except RuntimeError as e:
             print(str(e).replace("\\n", "\n").replace("\\", ""))
             exit("Shaders failed to compile")
-        self.program_id = program_id
-        glUseProgram(self.program_id)
-        self.uniforms["MVP"] = glGetUniformLocation(self.program_id, "MVP")
-        self.uniforms["MV"] = glGetUniformLocation(self.program_id, "MV")
-        self.uniforms["M"] = glGetUniformLocation(self.program_id, "M")
-        self.uniforms["V"] = glGetUniformLocation(self.program_id, "V")
+        self.program_ids[name] = program_id
+        self.uniforms[name] = {}
+        # map uniform names to uniform ids
+        num_uniforms = glGetProgramiv(program_id, GL_ACTIVE_UNIFORMS)
+        for i in range(0, num_uniforms):
+            buff = np.array(glGetActiveUniformName(program_id, i, 256))
+            uni = buff[:np.count_nonzero(buff)].tostring().decode()
+            self.uniforms[name][uni] = glGetUniformLocation(program_id, uni)
 
-    def update_uniforms(self, model_transform):
+    def update_uniforms(self, new_uniforms):
         """Send matrixes to the GPU."""
-        MV = matrix44.multiply(model_transform, self.V)
-        glUniformMatrix4fv(
-            self.uniforms["MV"], 1, GL_FALSE,
-            MV
-        )
-        glUniformMatrix4fv(
-            self.uniforms["MVP"], 1, GL_FALSE,
-            matrix44.multiply(MV, self.P)
-        )
-        glUniformMatrix4fv(
-            self.uniforms["M"], 1, GL_FALSE,
-            model_transform
-        )
-        glUniformMatrix4fv(
-            self.uniforms["V"], 1, GL_FALSE,
-            self.V
-        )
+        CAMERA_UNIFORMS = set(["MVP", "MV", "V", "M", "P"])
+        active_uniforms = self.uniforms[self.active_program]
+        for uni in new_uniforms:
+            if uni in CAMERA_UNIFORMS and uni not in active_uniforms:
+                continue
+            glUniformMatrix4fv(
+                active_uniforms[uni], 1, GL_FALSE,
+                new_uniforms[uni]
+            )
+
+    def use_program(self, name):
+        """Make program active."""
+        glUseProgram(self.program_ids[name])
+        self.active_program = name
 
     def load_models(self, names):
         """Load models."""

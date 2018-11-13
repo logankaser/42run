@@ -6,8 +6,6 @@ layout(location = 2) in vec3 vert_pos;
 
 uniform mat4 MVP;
 uniform mat4 MV;
-uniform mat4 V;
-uniform mat4 M;
 
 out vec2 uv;
 out vec3 norm;
