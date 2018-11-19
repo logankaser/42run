@@ -18,8 +18,8 @@ class Entity:
     def draw(self, ctx):
         """Add entity to the global draw queue."""
         self.transform = matrix44.multiply(
-            matrix44.create_from_eulers(self.rot),
-            matrix44.create_from_translation(self.pos)
+            matrix44.create_from_eulers(self.rot, dtype=np.float32),
+            matrix44.create_from_translation(self.pos, dtype=np.float32)
         )
         ctx.draw_queue.append((self.model, self.transform))
 

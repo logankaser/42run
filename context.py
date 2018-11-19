@@ -2,7 +2,8 @@
 
 import ctypes
 import numpy as np
-from os import path
+import glob
+import os.path
 from PIL import Image
 from pywavefront import Wavefront
 from collections import deque
@@ -28,16 +29,27 @@ def get_radius(vertices):
 class Context:
     """Context."""
 
+    GL_CUBE_MAP_FACES = [
+        GL_TEXTURE_CUBE_MAP_POSITIVE_X,
+        GL_TEXTURE_CUBE_MAP_NEGATIVE_X,
+        GL_TEXTURE_CUBE_MAP_POSITIVE_Y,
+        GL_TEXTURE_CUBE_MAP_NEGATIVE_Y,
+        GL_TEXTURE_CUBE_MAP_POSITIVE_Z,
+        GL_TEXTURE_CUBE_MAP_NEGATIVE_Z
+    ]
+
     def __init__(self):
         """Create render context."""
         self.program_ids = {}
+        self.active_program = None
         self.uniforms = {}
         self.draw_queue = deque()
         self.models = {}
         self.textures = {}
         # create vao
-        vao = glGenVertexArrays(1)
-        glBindVertexArray(vao)
+        self.default_vao = glGenVertexArrays(1)
+        self.default_vbo = None
+        glBindVertexArray(self.default_vao)
         glClearColor(0.3, 0.3, 0.3, 1)
         glEnable(GL_DEPTH_TEST)
         glDepthFunc(GL_LESS)
@@ -48,10 +60,12 @@ class Context:
 
     def load_program(self, name):
         """Load shaders."""
+        if name in self.program_ids:
+            return
         try:
-            with open(path.join("assets", name + ".frag"), "r") as src:
+            with open(os.path.join("assets", name + ".frag"), "r") as src:
                 frag_src = src.read()
-            with open(path.join("assets", name + ".vert"), "r") as src:
+            with open(os.path.join("assets", name + ".vert"), "r") as src:
                 vert_src = src.read()
         except Exception as e:
             exit("Error reading shader from disk")
@@ -86,8 +100,9 @@ class Context:
 
     def use_program(self, name):
         """Make program active."""
-        glUseProgram(self.program_ids[name])
-        self.active_program = name
+        if self.active_program != name:
+            glUseProgram(self.program_ids[name])
+            self.active_program = name
 
     def load_models(self, names):
         """Load models."""
@@ -100,9 +115,8 @@ class Context:
             for name, mat in obj.materials.items():
                 if (mat.vertex_format != "T2F_N3F_V3F"):
                     exit("Vertx format must be T2F_N3F_V3F")
-                if (mat.texture and not self.textures.get(mat.texture.path)):
-                    self.load_texture(mat.texture.path)
-                texture = self.textures.get(mat.texture.path)
+                texture = self.load_texture(mat.texture.path) if mat.texture \
+                    else None
                 verts = np.array(mat.vertices, dtype=np.float32)
                 all_vertices.append(verts)
                 model_indices += len(mat.vertices) // 8
@@ -117,12 +131,12 @@ class Context:
         vertices = np.concatenate(all_vertices).ravel()
 
         # upload to GPU
-        vbo = glGenBuffers(1)
-        glBindBuffer(GL_ARRAY_BUFFER, vbo)
+        self.default_vbo = glGenBuffers(1)
+        glBindBuffer(GL_ARRAY_BUFFER, self.default_vbo)
         glBufferData(
             GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
 
-        s = 4 * (2 + 3 + 3)
+        s = np.dtype(np.float32).itemsize * (2 + 3 + 3)
         glEnableVertexAttribArray(0)
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, s, ctypes.c_void_p(0))
 
@@ -135,15 +149,16 @@ class Context:
 
     def load_texture(self, path):
         """Upload a texture to GPU."""
+        if path in self.textures:
+            return self.textures[path]
         try:
             im = Image.open(path).convert("RGBA")
         except Exception as e:
-            exit("Error reading texture:" + e)
+            exit("Error reading texture: " + path)
         data = im.tobytes("raw", "RGBA", 0, -1)
 
         # generate a new texture id
         texture_id = glGenTextures(1)
-        self.textures[path] = texture_id
         glBindTexture(GL_TEXTURE_2D, texture_id)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0)
@@ -168,3 +183,52 @@ class Context:
             GL_UNSIGNED_BYTE,
             data
         )
+        self.textures[path] = texture_id
+        return texture_id
+
+    def load_texture_cubemap(self, path):
+        """Load cubemap texture."""
+        # Generate a new texture id
+        if path in self.textures:
+            return self.textures[path]
+        texture_id = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_CUBE_MAP, texture_id)
+
+        i = 0
+        sides = ["left", "right", "top", "bottom", "back", "front"]
+        for face in self.GL_CUBE_MAP_FACES:
+            try:
+                face_path = None
+                face_path = glob.glob(os.path.join(path, sides[i] + ".*"))[0]
+                im = Image.open(face_path).convert("RGBA")
+            except Exception as e:
+                exit(
+                    "Error reading cubemap texture: " +
+                    (face_path if face_path else str(i) + ".*")
+                )
+            i += 1
+            data = im.tobytes("raw", "RGBA", 0, -1)
+            # Upload a texture
+            glTexImage2D(
+                face,
+                0,
+                GL_RGB,
+                im.width,
+                im.height,
+                0,
+                GL_RGBA,
+                GL_UNSIGNED_BYTE,
+                data
+            )
+        glTexParameteri(
+            GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glTexParameteri(
+            GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        glTexParameteri(
+            GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(
+            GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexParameteri(
+            GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE)
+        self.textures[path] = texture_id
+        return texture_id

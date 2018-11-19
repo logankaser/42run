@@ -10,17 +10,21 @@ from window import Window, glfw
 from entity import Entity
 from context import Context
 from camera import Camera
+from skybox import Skybox
 from math import pi, sin
 import OpenGL
 OpenGL.ERROR_CHECKING = False
 from OpenGL.GL import *
 
+
 def ease_linear(t, start, end):
+    """Linear easing."""
     diff = end - start
     return start + (diff * t)
 
 
 def run_timer(dt, time):
+    """Run a timer."""
     if time - dt > 0:
         time -= dt
     else:
@@ -42,7 +46,8 @@ class Player(Entity):
 
     def update(self, dt, ctx, win):
         """Update."""
-        if win.key(glfw.KEY_SPACE) and self.pos[1] <= 0.0 and self.velocity[1] <= 0.02:
+        if win.key(glfw.KEY_SPACE) and self.pos[1] <= 0.0 and \
+                self.velocity[1] <= 0.02:
             self.velocity[1] += 0.5
         elif self.pos[1] <= 0.0:
             self.velocity[1] = 0.0
@@ -65,10 +70,12 @@ class Player(Entity):
 
         self.switch_timer = run_timer(dt, self.switch_timer)
 
-        if win.key(glfw.KEY_A) and self.lane < 2 and self.lane == self.target_lane:
+        if win.key(glfw.KEY_A) and self.lane < 2 and \
+                self.lane == self.target_lane:
             self.target_lane = self.lane + 1
             self.switch_timer = self.switch_duration
-        if win.key(glfw.KEY_D) and self.lane > 0 and self.lane == self.target_lane:
+        if win.key(glfw.KEY_D) and self.lane > 0 and \
+                self.lane == self.target_lane:
             self.target_lane = self.lane - 1
             self.switch_timer = self.switch_duration
 
@@ -92,30 +99,33 @@ class Obstacle(Entity):
         self.pos[1] = sin(self.pos[2] * 0.5) * 0.3
 
 
-def render(camera, ctx):
+def render(camera, skybox, ctx):
     """Render a frame."""
-
     ctx.clear()
+    ctx.use_program("42run")
     while len(ctx.draw_queue):
         model_name, model_transform = ctx.draw_queue.pop()
         camera_uniforms = camera.gen_uniforms(model_transform)
         m = ctx.models[model_name]
         ctx.update_uniforms(camera_uniforms)
         glBindTexture(GL_TEXTURE_2D, m["texture"])
+        glActiveTexture(GL_TEXTURE0)
         glDrawArrays(GL_TRIANGLES, m["offset"], m["indices"])
     err = glGetError()
     if (err != GL_NO_ERROR):
         exit("GLERROR: ", gluErrorString(err))
+    skybox.draw(ctx, camera)
 
 
 def update(dt, player, entities, ctx, win):
     """Game update loop."""
-
     player_radius = ctx.models[player.model]["radius"]
-    if player.pos[2] < 0.3:
+    if player.pos[1] < 0.2:
         for e in [x for x in entities if x.lane == player.lane]:
             e.collisions.clear()
-            if e.pos[2] - ctx.models[e.model]["radius"] <= player.pos[2] + player_radius and e.pos[2] + ctx.models[e.model]["radius"] >= player.pos[2] - player_radius:
+            if e.pos[2] - ctx.models[e.model]["radius"] <= player.pos[2] \
+                + player_radius and e.pos[2] + ctx.models[e.model]["radius"] \
+                    >= player.pos[2] - player_radius:
                 e.collisions.append(player)
 
     player.update(dt, ctx, win)
@@ -138,7 +148,7 @@ def main():
     ctx = Context()
     ctx.load_program("42run")
     ctx.use_program("42run")
-    ctx.load_models(["monkey", "42"])
+    ctx.load_models(["monkey", "42", "skybox"])
 
     entities = [
         Obstacle([0, 0, 40]),
@@ -150,7 +160,7 @@ def main():
     player = Player()
 
     cam = Camera(V, 1)
-
+    skybox = Skybox(ctx, "assets/skybox")
     # mainloop
     old_time = glfw.get_time()
     while window:
@@ -158,7 +168,7 @@ def main():
         dt = new_time - old_time
         update(dt, player, entities, ctx, window)
         old_time = new_time
-        render(cam, ctx)
+        render(cam, skybox, ctx)
         window.swap_buffers()
     window.close()
 

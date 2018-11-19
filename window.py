@@ -39,7 +39,10 @@ class Window:
 
     def __bool__(self):
         """Return false if window should close."""
-        return not glfw.window_should_close(self.glfw_window)
+        return (
+            not glfw.window_should_close(self.glfw_window)
+            and not self.keys.get(glfw.KEY_ESCAPE, False)
+        )
 
     def _window_resize_handler(self, win, width, height):
         self.width, self.height = width, height

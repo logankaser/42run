@@ -1,4 +1,6 @@
+"""Camera."""
 from pyrr import matrix44
+import numpy as np
 
 
 class Camera:
@@ -9,12 +11,12 @@ class Camera:
         self.fov = fov
         self.V = V
         self.P = matrix44.create_perspective_projection(
-            self.fov, aspect, 0.1, 100)
+            self.fov, aspect, 0.1, 100, dtype=np.float32)
 
     def update_aspect(self, aspect):
         """Recreate perspective matrix with new aspect ratio."""
         self.P = matrix44.create_perspective_projection(
-            self.fov, aspect, 0.1, 100)
+            self.fov, aspect, 0.1, 100, dtype=np.float32)
 
     def gen_uniforms(self, M):
         """Generate standard camera uniforms."""

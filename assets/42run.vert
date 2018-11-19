@@ -1,8 +1,8 @@
 #version 410 core
 
-layout(location = 0) in vec2 vert_uv;
-layout(location = 1) in vec3 vert_norm;
-layout(location = 2) in vec3 vert_pos;
+layout (location = 0) in vec2 vert_uv;
+layout (location = 1) in vec3 vert_norm;
+layout (location = 2) in vec3 vert_pos;
 
 uniform mat4 MVP;
 uniform mat4 MV;
