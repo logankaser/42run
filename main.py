@@ -11,7 +11,7 @@ from entity import Entity
 from context import Context
 from camera import Camera
 from skybox import Skybox
-from math import pi, sin
+from math import pi, sin, sqrt
 import OpenGL
 OpenGL.ERROR_CHECKING = False
 from OpenGL.GL import *
@@ -48,11 +48,11 @@ class Player(Entity):
         """Update."""
         if win.key(glfw.KEY_SPACE) and self.pos[1] <= 0.0 and \
                 self.velocity[1] <= 0.02:
-            self.velocity[1] += 0.5
+            self.velocity[1] += 0.35
         elif self.pos[1] <= 0.0:
             self.velocity[1] = 0.0
         elif self.velocity[1] >= -0.15:
-            self.velocity[1] -= 0.02
+            self.velocity[1] -= 0.005 + sqrt(abs(self.velocity[1])) * 0.025
         self.pos += self.velocity
 
         if self.switch_timer > 0.0:
@@ -117,9 +117,13 @@ def render(camera, skybox, ctx):
     skybox.draw(ctx, camera)
 
 
-def update(dt, player, entities, ctx, win):
+def update(dt, camera, player, entities, ctx, win):
     """Game update loop."""
     player_radius = ctx.models[player.model]["radius"]
+    cam_pos = list(player.pos)
+    cam_pos[1] += 3 - player.pos[1] * 0.2
+    cam_pos[2] -= 6
+    camera.set_pos(cam_pos)
     if player.pos[1] < 0.2:
         for e in [x for x in entities if x.lane == player.lane]:
             e.collisions.clear()
@@ -135,19 +139,12 @@ def update(dt, player, entities, ctx, win):
         e.draw(ctx)
 
 
-def main():
+if __name__ == "__main__":
     """main."""
     window = Window(1024, 1024)
 
-    V = matrix44.create_look_at(
-        np.array([0, 3, -6]),  # position
-        np.array([0, 2, 6]),  # target
-        np.array([0, 1, 0])  # up vector
-    )
-    P = matrix44.create_perspective_projection(60, 1, 0.1, 100)
     ctx = Context()
     ctx.load_program("42run")
-    ctx.use_program("42run")
     ctx.load_models(["monkey", "42", "skybox"])
 
     entities = [
@@ -159,19 +156,20 @@ def main():
     ]
     player = Player()
 
-    cam = Camera(V, 1)
+    cam = Camera(
+        pos=[0, 3, -6],
+        target=[0, 2, 6]
+    )
+
     skybox = Skybox(ctx, "assets/skybox")
+
     # mainloop
     old_time = glfw.get_time()
     while window:
         new_time = glfw.get_time()
         dt = new_time - old_time
-        update(dt, player, entities, ctx, window)
+        update(dt, cam, player, entities, ctx, window)
         old_time = new_time
         render(cam, skybox, ctx)
         window.swap_buffers()
     window.close()
-
-
-if __name__ == "__main__":
-    main()

@@ -195,7 +195,7 @@ class Context:
         glBindTexture(GL_TEXTURE_CUBE_MAP, texture_id)
 
         i = 0
-        sides = ["left", "right", "top", "bottom", "back", "front"]
+        sides = ["right", "left", "top", "bottom", "front", "back"]
         for face in self.GL_CUBE_MAP_FACES:
             try:
                 face_path = None
