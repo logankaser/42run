@@ -13,6 +13,11 @@ uniform sampler2D tex;
 void	main()
 {
 	vec3 c = texture(tex, uv).rgb;
+	float a = texture(tex, uv).a;
+	if (a != 1.0) {
+		color = vec4(c, a);
+		return;
+	}
 	//vec3 c = vec3(1, 1, 1);
 
 	vec3 n = normalize(norm);
@@ -23,6 +28,6 @@ void	main()
 
 	float cos_alpha = clamp(dot(E, R), 0.0000001, 1.0);
 
-	c *=  max(cos_theta, 0.1) + vec3(pow(cos_alpha, 9.0));
-	color = vec4(c, 1.0);
+	c *= max(cos_theta, 0.2) + vec3(pow(cos_alpha, 9.0));
+	color = vec4(c, a);
 }

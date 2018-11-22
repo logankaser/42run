@@ -37,23 +37,22 @@ class Player(Entity):
 
     def __init__(self):
         """Create a player."""
-        super().__init__("42", [0, 0, 0], [0, 0, 0])
+        super().__init__("ship", [0, 0, 0], [0, 0, 0])
+        self.flames = Entity("flames", [0, 0, 0], [0, 0, 0])
         self.velocity = np.array([0, 0, 0], dtype=np.float32)
         self.lane = 1
         self.target_lane = 1
         self.switch_duration = 0.33
         self.switch_timer = 0.0
+        self.rot_timer = 0.0
 
     def update(self, dt, ctx, win):
         """Update."""
-        if win.key(glfw.KEY_SPACE) and self.pos[1] <= 0.0 and \
-                self.velocity[1] <= 0.02:
-            self.velocity[1] += 0.35
-        elif self.pos[1] <= 0.0:
-            self.velocity[1] = 0.0
-        elif self.velocity[1] >= -0.15:
-            self.velocity[1] -= 0.005 + sqrt(abs(self.velocity[1])) * 0.025
-        self.pos += self.velocity
+        self.rot_timer += dt
+        if self.rot_timer >= 0.1:
+            self.flames.rot[2] = random.random() * pi * 2
+            self.rot_timer = 0.0
+        self.rot[2] += 1.0 * dt
 
         if self.switch_timer > 0.0:
             lanes = [-2, 0, 2]
@@ -78,6 +77,12 @@ class Player(Entity):
                 self.lane == self.target_lane:
             self.target_lane = self.lane - 1
             self.switch_timer = self.switch_duration
+        self.flames.pos = self.pos
+
+    def draw(self, ctx):
+        """Add entity to the global draw queue."""
+        super().draw(ctx)
+        self.flames.draw(ctx)
 
 
 class Obstacle(Entity):
@@ -85,18 +90,23 @@ class Obstacle(Entity):
 
     def __init__(self, pos):
         """Create a player."""
-        super().__init__("monkey", pos, [0, 0, -pi])
+        super().__init__("asteroid", pos, [0, 0, -pi])
         self.lane = random.choice([0, 1, 2])
+        self.pos[1] = random.choice([0, 5, 10])
 
     def update(self, dt, ctx, win):
         """Update."""
         for c in self.collisions:
             exit("YOU DIED")
-        self.pos[2] -= 10 * dt
+        self.pos[2] -= 1 * dt
         if self.pos[2] < -4:
-            self.pos[2] += 104
+            self.pos[2] += 10
+        if self.pos[1] < -20:
+            self.pos[1] = 20
         self.pos[0] = [-2, 0, 2][self.lane]
-        self.pos[1] = sin(self.pos[2] * 0.5) * 0.3
+        self.pos[1] -= 4 * dt
+        self.rot[2] += 1 * dt
+        self.rot[1] += 1 * dt
 
 
 def render(camera, skybox, ctx):
@@ -119,11 +129,8 @@ def render(camera, skybox, ctx):
 
 def update(dt, camera, player, entities, ctx, win):
     """Game update loop."""
+    """
     player_radius = ctx.models[player.model]["radius"]
-    cam_pos = list(player.pos)
-    cam_pos[1] += 3 - player.pos[1] * 0.2
-    cam_pos[2] -= 6
-    camera.set_pos(cam_pos)
     if player.pos[1] < 0.2:
         for e in [x for x in entities if x.lane == player.lane]:
             e.collisions.clear()
@@ -131,6 +138,7 @@ def update(dt, camera, player, entities, ctx, win):
                 + player_radius and e.pos[2] + ctx.models[e.model]["radius"] \
                     >= player.pos[2] - player_radius:
                 e.collisions.append(player)
+    """
 
     player.update(dt, ctx, win)
     player.draw(ctx)
@@ -145,21 +153,21 @@ if __name__ == "__main__":
 
     ctx = Context()
     ctx.load_program("42run")
-    ctx.load_models(["monkey", "42", "skybox"])
+    ctx.load_models(["ship", "flames", "skybox", "asteroid"])
 
     entities = [
-        Obstacle([0, 0, 40]),
-        Obstacle([0, 0, 20]),
-        Obstacle([0, 0, 60]),
-        Obstacle([0, 0, 80]),
-        Obstacle([0, 0, 100]),
+        Obstacle([0, 0, 12]),
+        Obstacle([0, 0, 10]),
+        Obstacle([0, 0, 13]),
+        Obstacle([0, 0, 16]),
+        Obstacle([0, 0, 14])
     ]
-    player = Player()
 
     cam = Camera(
-        pos=[0, 3, -6],
-        target=[0, 2, 6]
+        pos=[0, -1, -20],
+        target=[0, 0, 6]
     )
+    player = Player()
 
     skybox = Skybox(ctx, "assets/skybox")
 
