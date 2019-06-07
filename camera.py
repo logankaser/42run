@@ -6,20 +6,34 @@ import numpy as np
 class Camera:
     """Game camera."""
 
-    def __init__(self, pos=[0, 0, 0], target=[0, 0, 1], aspect=1, fov=60):
+    def __init__(
+        self,
+        pos=np.array([0.0, 0.0, 0.0], dtype=np.float32),
+        target=np.array([0.0, 0.0, 1.0], dtype=np.float32),
+        aspect=1.0,
+        fov=60.0,
+    ):
         """Create camera."""
         self.fov = fov
         self.aspect = aspect
-        self.pos = pos
+        if isinstance(pos, np.ndarray):
+            self.pos = pos
+        else:
+            self.pos = np.array(pos, dtype=np.float32)
         self.target = target
+        if isinstance(target, np.ndarray):
+            self.target = target
+        else:
+            self.target = np.array(target, dtype=np.float32)
         self.V = matrix44.create_look_at(
-            np.array(self.pos),  # position
-            np.array(self.target),  # target
-            np.array([0, 1, 0])  # up vector
+            self.pos,  # position
+            self.target,  # target
+            np.array([0, 1, 0]),  # up vector
         )
         self.regen_view = False
         self.P = matrix44.create_perspective_projection(
-            self.fov, aspect, 0.1, 100, dtype=np.float32)
+            self.fov, aspect, 0.1, 100, dtype=np.float32
+        )
         self.regen_prespective = False
 
     def set_aspect(self, aspect):
@@ -44,7 +58,7 @@ class Camera:
 
     def _regen_prespective(self):
         self.P = matrix44.create_perspective_projection(
-            self.fov, aspect, 0.1, 100, dtype=np.float32
+            self.fov, self.aspect, 0.1, 100, dtype=np.float32
         )
         self.regen_prespective = False
 
@@ -52,7 +66,7 @@ class Camera:
         self.V = matrix44.create_look_at(
             np.array(self.pos),  # position
             np.array(self.target),  # target
-            np.array([0, 1, 0])  # up vector
+            np.array([0, 1, 0]),  # up vector
         )
         self.regen_view = False
 
@@ -64,9 +78,4 @@ class Camera:
             self._regen_view()
         MV = matrix44.multiply(M, self.V)
         MVP = matrix44.multiply(MV, self.P)
-        return {
-            "M": M,
-            "V": self.V,
-            "MV": MV,
-            "MVP": MVP
-        }
+        return {"M": M, "V": self.V, "MV": MV, "MVP": MVP}

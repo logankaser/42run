@@ -6,24 +6,42 @@ import glob
 import os.path
 from PIL import Image
 from pywavefront import Wavefront
-from collections import deque
 import OpenGL
+
 OpenGL.ERROR_CHECKING = False
 from OpenGL.GL import *
 from OpenGL.GL import shaders
 from OpenGL.raw.GL.EXT.texture_filter_anisotropic import *
 
 
-def get_radius(vertices):
-    """Get bounding column."""
-    lengths = vertices[5::8]**2 + vertices[6::8]**2
+class Model:
+    """Holds information about a model to be rendered."""
 
-    # find the maximum value
-    maximum = lengths.max()
+    def __init__(self, offset, indices, texture):
+        """Create model."""
+        self.offset = offset
+        self.indices = indices
+        self.texture = texture
 
-    # square root this, this is the radius
-    radius = np.sqrt(maximum)
-    return radius
+
+class VAO:
+    """Holds ids that are managed by a VAO."""
+
+    def __init__(self):
+        """Create model."""
+        self.id = glGenVertexArrays(1)
+        self.buffer_ids = []
+        self.texture_ids = []
+
+
+class Uniform:
+    """Uniform id, type, and size."""
+
+    def __init__(self, id, type, size):
+        """Create model."""
+        self.id = id
+        self.type = type
+        self.size = size
 
 
 class Context:
@@ -35,7 +53,7 @@ class Context:
         GL_TEXTURE_CUBE_MAP_POSITIVE_Y,
         GL_TEXTURE_CUBE_MAP_NEGATIVE_Y,
         GL_TEXTURE_CUBE_MAP_POSITIVE_Z,
-        GL_TEXTURE_CUBE_MAP_NEGATIVE_Z
+        GL_TEXTURE_CUBE_MAP_NEGATIVE_Z,
     ]
 
     def __init__(self):
@@ -43,14 +61,14 @@ class Context:
         self.program_ids = {}
         self.active_program = None
         self.uniforms = {}
-        self.draw_queue = deque()
         self.models = {}
         self.textures = {}
         # create vao
-        self.default_vao = glGenVertexArrays(1)
-        self.default_vbo = None
-        glBindVertexArray(self.default_vao)
-        glClearColor(0.3, 0.3, 0.3, 1)
+        self.vertex_arrays = {}
+        self.active_vertex_array = None
+        self.create_vao("default")
+        self.use_vao("default")
+        glClearColor(0.0, 0.0, 0.0, 1.0)
         glEnable(GL_DEPTH_TEST)
         glDepthFunc(GL_LESS)
         glEnable(GL_BLEND)
@@ -60,7 +78,7 @@ class Context:
         """Clear buffer."""
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-    def load_program(self, name):
+    def create_program(self, name):
         """Load shaders."""
         if name in self.program_ids:
             return
@@ -84,9 +102,10 @@ class Context:
         # map uniform names to uniform ids
         num_uniforms = glGetProgramiv(program_id, GL_ACTIVE_UNIFORMS)
         for i in range(0, num_uniforms):
-            buff = np.array(glGetActiveUniformName(program_id, i, 256))
-            uni = buff[:np.count_nonzero(buff)].tostring().decode()
-            self.uniforms[name][uni] = glGetUniformLocation(program_id, uni)
+            uni_name, uni_size, uni_type = glGetActiveUniform(program_id, i)
+            uni_name = uni_name.decode("utf-8")
+            uni_id = glGetUniformLocation(program_id, uni_name)
+            self.uniforms[name][uni_name] = Uniform(uni_id, uni_type, uni_size)
 
     def update_uniforms(self, new_uniforms):
         """Send matrixes to the GPU."""
@@ -95,10 +114,11 @@ class Context:
         for uni in new_uniforms:
             if uni in CAMERA_UNIFORMS and uni not in active_uniforms:
                 continue
-            glUniformMatrix4fv(
-                active_uniforms[uni], 1, GL_FALSE,
-                new_uniforms[uni]
-            )
+            glUniformMatrix4fv(active_uniforms[uni].id, 1, GL_FALSE, new_uniforms[uni])
+
+    def uniform(self, name):
+        """Get the uniform with name from the currently active program."""
+        return self.uniforms[self.active_program][name]
 
     def use_program(self, name):
         """Make program active."""
@@ -106,8 +126,30 @@ class Context:
             glUseProgram(self.program_ids[name])
             self.active_program = name
 
-    def load_models(self, names):
-        """Load models."""
+    def create_vao(self, name):
+        """Create a new vertex array object."""
+        if name in self.vertex_arrays:
+            raise RuntimeError("VAO with that name already exists")
+        self.vertex_arrays[name] = VAO()
+        self.models.setdefault(name, {})
+        self.textures.setdefault(name, {})
+
+    def use_vao(self, name):
+        """Make vao active.
+
+        Following calling this, all calls to load_{x} functions will use the
+        specified vao.
+        """
+        if self.active_vertex_array != name:
+            glBindVertexArray(self.vertex_arrays[name].id)
+            self.active_vertex_array = name
+
+    def load_models(self, names, vao="default"):
+        """Load or reload models into a vao."""
+        for model in self.models[vao].values():
+            glDeleteBuffers(model.id)
+
+        glBindVertexArray(self.vertex_arrays[vao].id)
         all_vertices = []
         model_offset = 0
         models = {}
@@ -115,28 +157,24 @@ class Context:
             model_indices = 0
             obj = Wavefront(f"assets/{model_name}.obj", parse=True)
             for name, mat in obj.materials.items():
-                if (mat.vertex_format != "T2F_N3F_V3F"):
-                    exit("Vertx format must be T2F_N3F_V3F")
-                texture = self.load_texture(mat.texture.path) if mat.texture \
-                    else None
+                if mat.vertex_format != "T2F_N3F_V3F":
+                    exit(
+                        f"Error in {model_name}.obj"
+                        + " vertex format must be T2F_N3F_V3F"
+                    )
+                texture = self.load_texture(mat.texture.path) if mat.texture else None
                 verts = np.array(mat.vertices, dtype=np.float32)
                 all_vertices.append(verts)
                 model_indices += len(mat.vertices) // 8
-            models[model_name] = {
-                "offset": model_offset,
-                "indices": model_indices,
-                "texture": texture,
-                "radius": get_radius(verts)
-            }
+            models[model_name] = Model(model_offset, model_indices, texture)
             model_offset += model_indices
 
         vertices = np.concatenate(all_vertices).ravel()
 
         # upload to GPU
-        self.default_vbo = glGenBuffers(1)
-        glBindBuffer(GL_ARRAY_BUFFER, self.default_vbo)
-        glBufferData(
-            GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
+        new_vbo = glGenBuffers(1)
+        glBindBuffer(GL_ARRAY_BUFFER, new_vbo)
+        glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
 
         s = np.dtype(np.float32).itemsize * (2 + 3 + 3)
         glEnableVertexAttribArray(0)
@@ -147,33 +185,34 @@ class Context:
 
         glEnableVertexAttribArray(2)
         glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, s, ctypes.c_void_p(20))
-        self.models = models
+        self.models[vao] = models
 
-    def load_texture(self, path):
+    def get_model(self, name):
+        """Get the model with name from the currently bound VAO."""
+        return self.models[self.active_vertex_array][name]
+
+    def load_texture(self, path, vao="default"):
         """Upload a texture to GPU."""
-        if path in self.textures:
-            return self.textures[path]
+        if path in self.textures[vao]:
+            return self.textures[vao][path]
         try:
             im = Image.open(path).convert("RGBA")
         except Exception as e:
             exit("Error reading texture: " + path)
+        glBindVertexArray(self.vertex_arrays[vao].id)
         data = im.tobytes("raw", "RGBA", 0, -1)
 
         # generate a new texture id
         texture_id = glGenTextures(1)
         glBindTexture(GL_TEXTURE_2D, texture_id)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0)
-        # TODO improve filter options
-        glTexParameteri(
-            GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glGenerateMipmap(GL_TEXTURE_2D)
-        antr = glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, antr)
-        # upload a texture
+
+        max_af = min(glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT), 16.0)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, max_af)
+        # upload texture
         glTexImage2D(
             GL_TEXTURE_2D,
             0,
@@ -183,16 +222,18 @@ class Context:
             0,
             GL_RGBA,
             GL_UNSIGNED_BYTE,
-            data
+            data,
         )
-        self.textures[path] = texture_id
+        glGenerateMipmap(GL_TEXTURE_2D)
+        self.textures[vao][path] = texture_id
         return texture_id
 
-    def load_texture_cubemap(self, path):
+    def load_texture_cubemap(self, path, vao="default"):
         """Load cubemap texture."""
         # Generate a new texture id
-        if path in self.textures:
-            return self.textures[path]
+        if path in self.textures[vao]:
+            return self.textures[vao][path]
+        glBindVertexArray(self.vertex_arrays[vao].id)
         texture_id = glGenTextures(1)
         glBindTexture(GL_TEXTURE_CUBE_MAP, texture_id)
 
@@ -205,32 +246,19 @@ class Context:
                 im = Image.open(face_path).convert("RGBA")
             except Exception as e:
                 exit(
-                    "Error reading cubemap texture: " +
-                    (face_path if face_path else str(i) + ".*")
+                    "Error reading cubemap texture: "
+                    + (face_path if face_path else str(i) + ".*")
                 )
             i += 1
             data = im.tobytes("raw", "RGBA", 0, -1)
             # Upload a texture
             glTexImage2D(
-                face,
-                0,
-                GL_RGB,
-                im.width,
-                im.height,
-                0,
-                GL_RGBA,
-                GL_UNSIGNED_BYTE,
-                data
+                face, 0, GL_RGB, im.width, im.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data
             )
-        glTexParameteri(
-            GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-        glTexParameteri(
-            GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        glTexParameteri(
-            GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-        glTexParameteri(
-            GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameteri(
-            GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE)
-        self.textures[path] = texture_id
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE)
+        self.textures[vao][path] = texture_id
         return texture_id

@@ -17,21 +17,16 @@ class Window:
         glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
         glfw.window_hint(glfw.SAMPLES, 4)
 
-        self.glfw_window = glfw.create_window(
-            width, height, "42run", None, None)
+        self.glfw_window = glfw.create_window(width, height, "42run", None, None)
         if not self.glfw_window:
             glfw.terminate()
             exit("Error creating window")
 
         self.width = width
         self.height = height
-        glfw.set_window_size_callback(
-            self.glfw_window, self._window_resize_handler
-        )
+        glfw.set_window_size_callback(self.glfw_window, self._window_resize_handler)
         self.keys = {}
-        glfw.set_key_callback(
-            self.glfw_window, self._keypress_handler
-        )
+        glfw.set_key_callback(self.glfw_window, self._keypress_handler)
         glfw.make_context_current(self.glfw_window)
 
         icon = Image.open("assets/icon.png")
@@ -39,9 +34,8 @@ class Window:
 
     def __bool__(self):
         """Return false if window should close."""
-        return (
-            not glfw.window_should_close(self.glfw_window)
-            and not self.keys.get(glfw.KEY_ESCAPE, False)
+        return not glfw.window_should_close(self.glfw_window) and not self.keys.get(
+            glfw.KEY_ESCAPE, False
         )
 
     def _window_resize_handler(self, win, width, height):
