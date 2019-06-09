@@ -1,7 +1,7 @@
 """Text."""
 
 import OpenGL
-from entity import Entity
+from entity import DrawableEntity
 from PIL import Image, ImageFont, ImageDraw
 import math
 
@@ -10,21 +10,22 @@ from OpenGL.GL import *
 from OpenGL.raw.GL.EXT.texture_filter_anisotropic import *
 
 
-class Text(Entity):
+class Text(DrawableEntity):
     """Arbitrary text that may be position in 3d."""
 
-    def __init__(self, ctx, pos, text, font_name="futura"):
+    def __init__(
+        self, ctx, pos, text, font_name="futura", default_color=(255, 255, 255, 255)
+    ):
         """Create entity."""
         super().__init__("plane", pos, [0, math.pi / 2, -math.pi / 2])
         self.text = text
 
-        self.image = Image.new("RGBA", (512, 512), (255, 0, 0, 0))
+        self.image = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+        self.color = default_color
 
-        self.font = ImageFont.truetype(f"assets/{font_name}.otf", size=120)
+        self.font = ImageFont.truetype(f"assets/{font_name}.otf", size=72)
         self.image_draw = ImageDraw.Draw(self.image)
-        self.image_draw.text(
-            (0, 196), text, (255, 255, 255, 255), self.font, align="center"
-        )
+        self.image_draw.text((0, 196), text, self.color, self.font, align="center")
 
         data = self.image.tobytes("raw", "RGBA", 0, -1)
 
@@ -53,6 +54,9 @@ class Text(Entity):
         glGenerateMipmap(GL_TEXTURE_2D)
         self.texture_id = texture_id
 
+    def __del__(self):
+        glDeleteTextures(self.texture_id)
+
     def draw(self, ctx, camera):
         """Draw da thing."""
         glDisable(GL_DEPTH_TEST)
@@ -66,12 +70,15 @@ class Text(Entity):
         glDrawArrays(GL_TRIANGLES, model.offset, model.indices)
         glEnable(GL_DEPTH_TEST)
 
-    def update(self, text):
+    def update(self, text, color=None):
         """Update."""
+        if self.text == text and not color:
+            return
+        self.text = text
         glDeleteTextures(self.texture_id)
         self.image_draw.rectangle([0, 0, 512, 512], (0, 0, 0, 0))
         self.image_draw.text(
-            (0, 196), text, (255, 255, 255, 255), self.font, align="center"
+            (0, 196), text, color or self.color, self.font, align="center"
         )
 
         data = self.image.tobytes("raw", "RGBA", 0, -1)

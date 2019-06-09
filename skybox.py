@@ -18,6 +18,9 @@ class Skybox:
         ctx.create_program("skybox")
         self.rot = np.array([0.0, 0.0, 0.0], dtype=np.float32)
 
+    def __del__(self):
+        glDeleteTextures(self.skybox_texture_id)
+
     def draw(self, ctx, camera):
         """Draw skybox."""
         ctx.use_program("skybox")

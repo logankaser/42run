@@ -146,10 +146,14 @@ class Context:
 
     def load_models(self, names, vao="default"):
         """Load or reload models into a vao."""
-        for model in self.models[vao].values():
-            glDeleteBuffers(model.id)
-
         glBindVertexArray(self.vertex_arrays[vao].id)
+        while self.vertex_arrays[vao].buffer_ids:
+            buff_id = self.vertex_arrays[vao].buffer_ids.pop()
+            glDeleteBuffers(buff_id, 1)
+        while self.vertex_arrays[vao].texture_ids:
+            tex_id = self.vertex_arrays[vao].texture_ids.pop()
+            glDeleteTextures(tex_id)
+
         all_vertices = []
         model_offset = 0
         models = {}
@@ -163,6 +167,8 @@ class Context:
                         + " vertex format must be T2F_N3F_V3F"
                     )
                 texture = self.load_texture(mat.texture.path) if mat.texture else None
+                if texture:
+                    self.vertex_arrays[vao].texture_ids.append(texture)
                 verts = np.array(mat.vertices, dtype=np.float32)
                 all_vertices.append(verts)
                 model_indices += len(mat.vertices) // 8
@@ -173,6 +179,7 @@ class Context:
 
         # upload to GPU
         new_vbo = glGenBuffers(1)
+        self.vertex_arrays[vao].buffer_ids.append(new_vbo)
         glBindBuffer(GL_ARRAY_BUFFER, new_vbo)
         glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
 
