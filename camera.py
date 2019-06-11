@@ -32,7 +32,7 @@ class Camera:
         )
         self.regen_view = False
         self.P = matrix44.create_perspective_projection(
-            self.fov, aspect, 0.1, 100, dtype=np.float32
+            self.fov, aspect, 0.1, 300, dtype=np.float32
         )
         self.regen_prespective = False
 
